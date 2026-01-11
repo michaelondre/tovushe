@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D City Wheel</title>
+    <style>
+        body {
+            margin: 0;
+            background-color: #000;
+            color: #fff;
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            /* Places the entire widget on the right side */
+            justify-content: flex-end; 
+            padding-right: 10%; 
+            user-select: none;
+        }
+
+        /* The Container that holds both the Dot and the Wheel */
+        .picker-container {
+            display: flex;
+            align-items: center;
+            position: relative;
+            height: 400px; /* Limits the view height */
+        }
+
+        /* --- RED INDICATOR (Now locked to the wheel) --- */
+        .indicator {
+            width: 10px;
+            height: 10px;
+            background-color: #ff3333;
+            border-radius: 50%;
+            box-shadow: 0 0 15px #ff3333;
+            /* Keeps the dot stationary while text moves */
+            z-index: 10;
+            margin-right: 20px; /* Spacing between dot and text */
+        }
+
+        /* The 3D Scene */
+        .scene {
+            /* INCREASED WIDTH to prevent text cutoff */
+            width: 600px; 
+            height: 100%;
+            position: relative;
+            /* Perspective creates the 3D curve depth */
+            perspective: 800px; 
+            /* Moves the "vanishing point" to the left, enhancing the curve effect */
+            perspective-origin: 0% 50%; 
+            /* The fade out mask */
+            mask-image: linear-gradient(to bottom, transparent 0%, black 35%, black 65%, transparent 100%);
+            -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 35%, black 65%, transparent 100%);
+        }
+
+        .wheel {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            transform-style: preserve-3d;
+            top: 50%;
+            left: 0; /* Aligns text start */
+        }
+
+        .city-item {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 50px; /* Increased height for better readability */
+            line-height: 50px;
+            font-size: 28px; /* Slightly larger text */
+            text-align: left;
+            white-space: nowrap; /* Prevents text wrapping */
+            cursor: pointer;
+            backface-visibility: hidden; /* Hides items when they spin to the back */
+            opacity: 0.6; /* Dim inactive items */
+            transition: opacity 0.3s, color 0.3s;
+        }
+
+        /* Active/Hover State */
+        .city-item.active, .city-item:hover {
+            color: #ff3333;
+            opacity: 1;
+            text-shadow: 0 0 15px rgba(255, 51, 51, 0.6);
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="picker-container">
+        <div class="indicator"></div>
+        
+        <div class="scene">
+            <div class="wheel" id="wheel"></div>
+        </div>
+    </div>
+
+    <script>
+        // --- DATA ---
+        const cities = [
+            { name: "Atlanta, Georgia", url: "/atlanta" },
+            { name: "Paris, France", url: "https://www.paris.fr" },
+            { name: "Tokyo, Japan", url: "#" },
+            { name: "Berlin, Germany", url: "#" },
+            { name: "Oslo, Norway", url: "#" },
+            { name: "Copenhagen, Denmark", url: "#" },
+            { name: "London, UK", url: "#" },
+            { name: "Madrid, Spain", url: "#" },
+            { name: "Helsinki, Finland", url: "#" },
+            { name: "Shanghai, China", url: "#" },
+            { name: "San Francisco, USA", url: "#" },
+            { name: "Sao Palo, Brazil", url: "#" },
+            { name: "Auckland, New Zealand", url: "#" },
+            { name: "Sydney, Australia", url: "#" },
+            { name: "New York, USA", url: "#" },
+            { name: "Stockholm, Sweden", url: "#" },
+            { name: "Dubai, UAE", url: "#" },
+            { name: "Seoul, South Korea", url: "#" },
+            { name: "Rome, Italy", url: "#" },
+            { name: "Toronto, Canada", url: "#" }
+        ];
+
+        const wheel = document.getElementById('wheel');
+        // Radius controls how "flat" or "curved" the cylinder looks
+        // Lower number = tighter curve. Higher number = flatter.
+        const radius = 400; 
+        const totalItems = cities.length;
+        const theta = 360 / totalItems; 
+        
+        let cityElements = [];
+
+        // --- BUILDER ---
+        cities.forEach((city, index) => {
+            const el = document.createElement('div');
+            el.className = 'city-item';
+            el.innerText = city.name;
+            el.dataset.url = city.url;
+            el.dataset.index = index;
+
+            // Initial Position
+            const angle = theta * index;
+            el.style.transform = `rotateX(-${angle}deg) translateZ(${radius}px)`;
+
+            // Click Handler
+            el.onclick = () => {
+                if (!hasMoved) {
+                    window.location.href = city.url; 
+                }
+            };
+
+            wheel.appendChild(el);
+            cityElements.push(el);
+        });
+
+        // --- ANIMATION STATE ---
+        let currentRotation = 0;
+        let targetRotation = 0;
+        let isDragging = false;
+        let startY = 0;
+        let startRotation = 0;
+        let hasMoved = false; 
+        
+        // Auto-scroll speed (set to 0 if you want it to stay still)
+        const autoScrollSpeed = 0.1; 
+
+        function animate() {
+            if (!isDragging) {
+                currentRotation += (targetRotation - currentRotation) * 0.05;
+                targetRotation += autoScrollSpeed; 
+            }
+            
+            // Apply rotation
+            wheel.style.transform = `translate(0, -50%) rotateX(${currentRotation}deg)`;
+
+            // Highlighting Logic: Find which item is closest to the center (0 degrees)
+            // We normalize rotation to 0-360 range to match indices
+            let normalizedRotation = currentRotation % 360;
+            if (normalizedRotation < 0) normalizedRotation += 360;
+            
+            // The item at the "front" is the one whose angle matches the rotation
+            const activeIndex = Math.round(normalizedRotation / theta) % totalItems;
+            
+            // Update classes for highlight effect
+            cityElements.forEach((el, idx) => {
+                // Determine distance from active index to create a "curve" of opacity
+                // (Optional refinement for smoother visuals)
+                if (idx === activeIndex) {
+                    el.classList.add('active');
+                } else {
+                    el.classList.remove('active');
+                }
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        // --- INTERACTION ---
+        window.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            hasMoved = false; 
+            startY = e.clientY;
+            startRotation = targetRotation;
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            const deltaY = e.clientY - startY;
+            if (Math.abs(deltaY) > 5) hasMoved = true;
+            targetRotation = startRotation + (deltaY * 0.3); // 0.3 = drag sensitivity
+            currentRotation = targetRotation; 
+        });
+
+        window.addEventListener('mouseup', () => {
+            isDragging = false;
+        });
+
+        window.addEventListener('wheel', (e) => {
+            targetRotation += e.deltaY * 0.1;
+        });
+
+        animate();
+
+    </script>
+</body>
+</html>
